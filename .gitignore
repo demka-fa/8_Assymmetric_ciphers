@@ -94,3 +94,6 @@ fabric.properties
 .DS_Store
 venv
 *.log
+*.pyc
+ftp_server/ftp-server/storage/
+ftp_server/ftp-cli/storage/
