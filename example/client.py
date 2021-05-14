@@ -1,17 +1,17 @@
 import socket
 import pickle
-from diffie_hellman import DiffieHellman
+from crypt_utils import DiffieHellman, FileCrypter
+
 HOST = '127.0.0.1'
 PORT = 8081
-
 
 def main():
     sock = socket.socket()
     sock.connect((HOST, PORT))
 
-    p = 100
-    g = 463
-    a = 603 # это можно хранить в txt
+    p = 54
+    g = 53
+    a = 63  # это можно хранить в txt
 
     diffie_hellman = DiffieHellman(a=a, p=p, g=g)
     client_mixed_key = diffie_hellman.mixed_key
@@ -20,12 +20,21 @@ def main():
     print(private_key)
 
     sock.send(pickle.dumps((p, g, client_mixed_key)))
-    B = pickle.loads(sock.recv(4096))
-    #Получаем B от сервера
-    K = B ** a % p
-    print(f"Вычисленный K на клиенте: {K}")
+    sock.close()
+
+    sock = socket.socket()
+    sock.connect((HOST, PORT))
+    crypter = FileCrypter(private_key)
+    result = crypter.encryption("ТЕСТ ТЕСТ")
+    print(result)
+    sock.send(pickle.dumps(result))
+
+    result = crypter.encryption(result)
+    print(result)
 
     sock.close()
+
+
 
 
 if __name__ == "__main__":
