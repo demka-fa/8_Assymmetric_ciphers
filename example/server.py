@@ -32,10 +32,9 @@ def main():
         elif type(data) == str:
             result = crypter.encryption(data)
             print(result)
+
         else:
-            print("Ниче не рабоатет")
-
-
+            raise ValueError(f"Был принят некорректный тип data: {type(data)}")
 
 if __name__ == "__main__":
     main()

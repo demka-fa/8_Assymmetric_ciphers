@@ -5,12 +5,14 @@ import threading
 import os
 import sys
 import base64
+import pickle
+from typing import Union
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 from validator import port_validation, ip_validation
-from typing import Union
+from crypt_utils import DiffieHellman, FileCrypter
 
 DEFAULT_PORT = 9090
 DEFAULT_IP = "127.0.0.1"
@@ -21,16 +23,18 @@ FILE_DETECT_FLAG = "DEMKA_FILE_STORAGE"
 # Настройки логирования
 logging.basicConfig(
     format="%(asctime)-15s [%(levelname)s] %(funcName)s: %(message)s",
-    handlers=[logging.FileHandler("./logs/client.log")],
+    handlers=[logging.FileHandler("./logs/client.log"), logging.StreamHandler()],
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
 
 class Client:
-    def __init__(self, server_ip: str, port_number: int) -> None:
+    def __init__(self, server_ip: str, port_number: int, encryption: DiffieHellman) -> None:
         self.server_ip = server_ip
         self.port_number = port_number
+        self.encryption = encryption
+        self.file_crypter = FileCrypter(encryption.generate_key(encryption.mixed_key))
         self.sock = None
         self.new_connection()
 
@@ -55,7 +59,7 @@ class Client:
         self.sock = sock
         logging.info(f"Успешное соединение с сервером {ip}:{port}")
 
-    def send_reg(self, password):
+    def send_reg(self, password: str):
         """Логика регистрации пользователя в системе"""
         print("*Новая регистрация в системе*")
         while True:
@@ -64,7 +68,7 @@ class Client:
                 print("Имя пользователя не может быть пустым!")
             else:
                 data = json.dumps(
-                    {"password": password, "username": input_username},
+                    {"password": password, "username": input_username, "keys": self.encryption.auth_keys},
                     ensure_ascii=False,
                 )
                 self.sock.send(data.encode())
@@ -72,7 +76,7 @@ class Client:
 
                 # Получаем данные с сервера
                 response = json.loads(
-                    self.sock.recv(1024).decode().replace(END_MESSAGE_FLAG, "")
+                    self.sock.recv(4096).decode().replace(END_MESSAGE_FLAG, "")
                 )
                 if not response["result"]:
                     raise ValueError(
@@ -104,7 +108,7 @@ class Client:
 
                 # Получаем данные с сервера
                 response = json.loads(
-                    self.sock.recv(1024).decode().replace(END_MESSAGE_FLAG, "")
+                    self.sock.recv(4096).decode().replace(END_MESSAGE_FLAG, "")
                 )
 
                 # Если успешно авторизовались
@@ -140,14 +144,17 @@ class Client:
     def read_message(self):
         """Чтение сообщения"""
         data = ""
+        data_enc = ""
         while True:
             # Получаем данные и собираем их по кусочкам
-            chunk = self.sock.recv(1024)
-            data += chunk.decode()
+            chunk = self.sock.recv(4096)
+            data_enc += pickle.loads(chunk)
+            data += self.file_crypter.encryption(pickle.loads(chunk))
 
             # Если это конец сообщения, то значит, что мы все собрали и можем обратно отдавать клиенту
             if END_MESSAGE_FLAG in data:
-                logger.info(f"Прием данных от сервера: '{data}'")
+                logger.info(f"Прием зашифрованных данных от сервера: '{data_enc}'")
+                logger.info(f"Прием расшифрованных данных от сервера: '{data}'")
                 data = data.replace(END_MESSAGE_FLAG, "")
 
                 data = json.loads(data)
@@ -160,14 +167,12 @@ class Client:
                     file_name, file_content = result_str.split(FILE_DETECT_FLAG)
                     self.server2client_transfer(file_name, file_content)
                     message_str = f"Получили файл {file_name} от сервера"
-                    logger.info(message_str)
-                    print(message_str)
 
                 # Значит это результат выполнения команды
                 else:
-                    logger.info(f"Получили результат выполнения команды: {result_str}")
+                    logger.info(f"Получили результат выполнения команды")
                     print(f"({is_success_str}) {result_str}")
-                data = ""
+                data, data_enc = "", ""
 
             # Если приняли часть данных - сообщаем
             else:
@@ -176,12 +181,13 @@ class Client:
     def send_message(self, message: str):
         """Отправка сообщения"""
 
-        # Добавляем флаг конца сообщения (по-другому я не знаю как передавать больше 1024 и не разрывать соединение)
+        # Добавляем флаг конца сообщения (по-другому я не знаю как передавать больше 4096 и не разрывать соединение)
         message += END_MESSAGE_FLAG
-
         # Отправляем сообщение
-        self.sock.send(message.encode())
+        message_new = self.file_crypter.encryption(message)
         logger.info(f"Отправка данных серверу: '{message}'")
+        logger.info(f"В зашифрованном виде: '{message_new}'")
+        self.sock.send(pickle.dumps(message_new))
 
     def input_processing(self):
         """Обработка ввода сообщений пользователя"""
@@ -209,11 +215,7 @@ class Client:
             path = msg_path.split(" ")[1]
             root_name = path.split(os.sep)[-1]
             with open(f"{MAIN_STORAGE_DIR}{os.sep}{path}", "rb") as file:
-                return (
-                    root_name
-                    + FILE_DETECT_FLAG
-                    + base64.b64encode(file.read()).decode("utf-8")
-                )
+                return root_name + FILE_DETECT_FLAG + base64.b64encode(file.read()).decode("utf-8")
 
         # Если не удалось обработать патч
         except (ValueError, FileNotFoundError, IndexError, IsADirectoryError):
@@ -242,6 +244,12 @@ class Client:
 
 
 def main():
+
+    p = 54
+    g = 53
+    a = 63  # это можно хранить в txt
+
+    encryption = DiffieHellman(a=a, p=p, g=g)
     port_input = input("Введите номер порта сервера -> ")
     port_flag = port_validation(port_input)
     # Если некорректный ввод
@@ -256,7 +264,7 @@ def main():
         ip_input = DEFAULT_IP
         print(f"Выставили ip-адрес {ip_input} по умолчанию")
 
-    client = Client(ip_input, int(port_input))
+    client = Client(ip_input, int(port_input), encryption)
 
 
 if __name__ == "__main__":

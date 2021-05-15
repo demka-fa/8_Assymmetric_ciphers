@@ -5,6 +5,7 @@ import random
 import socket
 import threading
 import os
+import pickle
 import sys
 from typing import Dict, Union, Any
 
@@ -17,6 +18,7 @@ currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 from validator import port_validation, check_port_open
+from crypt_utils import DiffieHellman, FileCrypter
 
 END_MESSAGE_FLAG = "CRLF_"
 FILE_DETECT_FLAG = "DEMKA_FILE_STORAGE"
@@ -53,6 +55,7 @@ class Server:
 
         # Список авторизации
         self.authenticated_list = []
+        self.authenticated_keys_dict = {}
         # Список ip, которым надо пройти регистрацию
         self.reg_list = []
 
@@ -186,9 +189,17 @@ class Server:
             data = json.dumps(data, ensure_ascii=False)
 
         data += END_MESSAGE_FLAG
-        data = data.encode()
-        conn.send(data)
-        logger.info(f"Сообщение {data_text} было отправлено клиенту {ip}")
+
+        if ip in self.authenticated_list:
+            file_crypter = self.authenticated_keys_dict[ip]
+            message_new = file_crypter.encryption(data)
+            conn.send(pickle.dumps(message_new))
+            logger.info(f"Сообщение {data_text} было отправлено клиенту {ip} в зашифрованном виде")
+            logger.info(f"Шифрованное сообщение: {message_new}")
+        else:
+            conn.send(data.encode())
+            logger.info(f"Сообщение {data_text} было отправлено клиенту {ip} в открытом виде")
+
 
     def socket_init(self):
         """Инициализация сокета"""
@@ -211,9 +222,16 @@ class Server:
 
         while True:
             # Получаем данные и собираем их по кусочкам
-            chunk = conn.recv(1024)
-            data += chunk.decode()
+            chunk = conn.recv(4096)
 
+            # Если вообще ничего не пришло - это конец всего соединения
+            if not chunk:
+                break
+
+            if client_ip in self.authenticated_list:
+                data += self.authenticated_keys_dict[client_ip].encryption(pickle.loads(chunk))
+            else:
+                data += chunk.decode()
             # Если это конец сообщения, то значит, что мы все собрали и можем отдавать данные каждому соединению
             if END_MESSAGE_FLAG in data:
 
@@ -279,9 +297,9 @@ class Server:
                             [
                                 f"{key} - {value}"
                                 for (
-                                    key,
-                                    value,
-                                ) in userfiles_logic.get_commands().items()
+                                key,
+                                value,
+                            ) in userfiles_logic.get_commands().items()
                             ]
                         )
                         description_str = f"Команда {command[0]} не найдена! Список команд:\n{commands_str}"
@@ -296,24 +314,25 @@ class Server:
             else:
                 logger.info(f"Приняли часть данных от клиента {client_ip}: '{data}'")
 
-            # Если вообще ничего не пришло - это конец всего соединения
-            if not chunk:
-                break
-
     def reg_logic(self, conn, addr):
         """
         Логика регистрации пользователя
         """
         newuser_ip = addr[0]
         try:
-            data = json.loads(conn.recv(1024).decode())
+            data = json.loads(conn.recv(4096).decode())
         except JSONDecodeError:
             if newuser_ip in self.reg_list:
                 self.reg_list.remove(newuser_ip)
             return
         newuser_password, newuser_username = hash(data["password"]), data["username"]
+        p, g, A = data["keys"]
+        encryption = DiffieHellman(a=A, p=p, g=g)
 
-        self.database.user_reg(newuser_ip, newuser_password, newuser_username)
+        server_mixed_key = encryption.mixed_key
+        newuser_key = encryption.generate_key(server_mixed_key)
+
+        self.database.user_reg(newuser_ip, newuser_password, newuser_username, newuser_key)
         logger.info(f"Клиент {newuser_ip} -> регистрация прошла успешно")
         create_flag = FTPFileProcessing.new_user_reg(newuser_username)
         if create_flag:
@@ -336,25 +355,22 @@ class Server:
     def auth_logic(self, conn, addr):
         """
         Логика авторизации клиента
-        Запрос авторизации у нас априори меньше 1024, так что никакой цикл не запускаем
+        Запрос авторизации у нас априори меньше 4096, так что никакой цикл не запускаем
         """
         try:
-            user_password = hash(json.loads(conn.recv(1024).decode())["password"])
+            user_password = hash(json.loads(conn.recv(4096).decode())["password"])
         except JSONDecodeError:
             return
         client_ip = addr[0]
 
         # Проверяем на существование данных
-        auth_result, username = self.database.user_auth(client_ip, user_password)
+        auth_result, username, key = self.database.user_auth(client_ip, user_password)
 
         # Если авторизация прошла успешно
         if auth_result == 1:
             logger.info(f"Клиент {client_ip} -> авторизация прошла успешно")
             data = {"result": True, "body": {"username": username}}
-            if client_ip not in self.authenticated_list:
-                self.authenticated_list.append(client_ip)
-                self.ip2username_dict[client_ip] = username
-                logger.info(f"Добавили клиента {client_ip} в список авторизации")
+
         # Если авторизация не удалась, но пользователь с таким ip существует
         elif auth_result == 0:
             logger.info(f"Клиент {client_ip} -> авторизация не удалась")
@@ -374,6 +390,11 @@ class Server:
 
         # Если была успешная авторизация - принимаем последующие сообщения от пользователя
         if auth_result == 1:
+            if client_ip not in self.authenticated_list:
+                self.authenticated_list.append(client_ip)
+                self.ip2username_dict[client_ip] = username
+                self.authenticated_keys_dict[client_ip] = FileCrypter(key)
+                logger.info(f"Добавили клиента {client_ip} в список авторизации")
             self.new_event_logic(conn, client_ip)
 
     def server_router(self, conn, addr):
@@ -399,6 +420,8 @@ class Server:
         # Если клиент был в списке авторизации - удаляем его
         if client_ip in self.authenticated_list:
             self.authenticated_list.remove(client_ip)
+            del self.ip2username_dict[client_ip]
+            del self.authenticated_keys_dict[client_ip]
             logger.info(f"Удалили клиента {client_ip} из списка авторизации")
 
     def __del__(self):
