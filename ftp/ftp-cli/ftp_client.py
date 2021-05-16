@@ -1,11 +1,11 @@
+import base64
 import json
 import logging
-import socket
-import threading
 import os
-import sys
-import base64
 import pickle
+import socket
+import sys
+import threading
 from typing import Union
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
@@ -244,7 +244,6 @@ class Client:
 
 
 def main():
-
     with open("./key.txt", "r") as file:
         data = file.read()
     p, g, a = map(int, data.split(" "))
@@ -264,6 +263,7 @@ def main():
         print(f"Выставили ip-адрес {ip_input} по умолчанию")
 
     client = Client(ip_input, int(port_input), encryption)
+
 
 if __name__ == "__main__":
     main()

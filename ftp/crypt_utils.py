@@ -1,4 +1,3 @@
-
 class FileCrypter:
     def __init__(self, key: int):
         self.key = key
@@ -12,6 +11,7 @@ class FileCrypter:
         :return: зашифрованное/расшифрованное сообщение
         """
         return "".join([chr(ord(message[i]) ^ self.key) for i in range(len(message))])
+
 
 class DiffieHellman:
 
@@ -35,6 +35,6 @@ class DiffieHellman:
         return mixed_key ** self._a % self._p
 
     @property
-    def auth_keys(self) :
+    def auth_keys(self):
         """Получение элементов для передачи на сторону сервера"""
         return self._p, self._g, self.mixed_key

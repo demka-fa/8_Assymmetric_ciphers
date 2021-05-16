@@ -1,18 +1,18 @@
 import json
-from json.decoder import JSONDecodeError
 import logging
-import random
-import socket
-import threading
 import os
 import pickle
+import random
+import socket
 import sys
+import threading
+from json.decoder import JSONDecodeError
 from typing import Dict, Union, Any
 
 import sha3
 
-from file_module import FTPFileProcessing
 from data_processing import DataProcessing
+from file_module import FTPFileProcessing
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
@@ -199,7 +199,6 @@ class Server:
         else:
             conn.send(data.encode())
             logger.info(f"Сообщение {data_text} было отправлено клиенту {ip} в открытом виде")
-
 
     def socket_init(self):
         """Инициализация сокета"""
@@ -452,6 +451,7 @@ def main():
         print(f"Выставили порт {port_input} по умолчанию")
 
     server = Server(int(port_input))
+
 
 if __name__ == "__main__":
     main()
