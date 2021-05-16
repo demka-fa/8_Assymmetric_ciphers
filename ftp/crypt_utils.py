@@ -33,3 +33,8 @@ class DiffieHellman:
         :return: приватный ключ
         """
         return mixed_key ** self._a % self._p
+
+    @property
+    def auth_keys(self):
+        """Получение элементов для передачи на сторону сервера"""
+        return self._p, self._g, self.mixed_key

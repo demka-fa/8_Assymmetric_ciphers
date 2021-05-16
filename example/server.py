@@ -1,9 +1,11 @@
-import socket
 import pickle
+import socket
+
 from crypt_utils import DiffieHellman, FileCrypter
 
 HOST = '127.0.0.1'
 PORT = 8081
+
 
 def main():
     sock = socket.socket()
@@ -15,7 +17,7 @@ def main():
         conn, addr = sock.accept()
 
         msg = conn.recv(4096)
-        #Получаем данные от клиента
+        # Получаем данные от клиента
         data = pickle.loads(msg)
 
         print(type(data))
@@ -32,9 +34,9 @@ def main():
         elif type(data) == str:
             result = crypter.encryption(data)
             print(result)
-        else:
-            print("Ниче не рабоатет")
 
+        else:
+            raise ValueError(f"Был принят некорректный тип data: {type(data)}")
 
 
 if __name__ == "__main__":

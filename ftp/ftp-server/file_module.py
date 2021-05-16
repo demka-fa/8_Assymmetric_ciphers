@@ -1,8 +1,8 @@
-import os
-import shutil
-import pathlib
 import base64
-from typing import Dict, Tuple, Union
+import os
+import pathlib
+import shutil
+from typing import Dict, Tuple
 
 MAIN_STORAGE_DIR = "storage"
 FILE_DETECT_FLAG = "DEMKA_FILE_STORAGE"
@@ -115,9 +115,9 @@ class FTPFileProcessing:
             try:
                 with open(current_path, "rb") as file:
                     content = (
-                        filename
-                        + FILE_DETECT_FLAG
-                        + base64.b64encode(file.read()).decode("utf-8")
+                            filename
+                            + FILE_DETECT_FLAG
+                            + base64.b64encode(file.read()).decode("utf-8")
                     )
                     is_error = False
 

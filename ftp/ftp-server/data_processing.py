@@ -24,7 +24,7 @@ class DataProcessing:
         with open(self.file_path, "w") as stream:
             yaml.dump(self.data, stream)
 
-    def user_auth(self, ip: str, password: str) -> Tuple[int, Union[str, None]]:
+    def user_auth(self, ip: str, password: str) -> Tuple[int, Union[str, None], Union[int, None]]:
         """
         Метод авторизации пользователя в системе
 
@@ -34,17 +34,17 @@ class DataProcessing:
         """
         for user in self.data:
             if user["ip_addr"] == ip and user["password"] == password:
-                return 1, user["username"]
+                return 1, user["username"], user["key"]
 
         for user in self.data:
             if user["ip_addr"] == ip:
-                return 0, None
+                return 0, None, None
 
-        return -1, None
+        return -1, None, None
 
-    def user_reg(self, ip: str, password: str, username: str) -> None:
+    def user_reg(self, ip: str, password: str, username: str, key: int) -> None:
         """Метод регистрации пользователей"""
-        self.data.append({"ip_addr": ip, "password": password, "username": username})
+        self.data.append({"ip_addr": ip, "password": password, "username": username, "key": key})
         self.write_collection()
 
     def clear(self):

@@ -1,9 +1,11 @@
-import socket
 import pickle
+import socket
+
 from crypt_utils import DiffieHellman, FileCrypter
 
 HOST = '127.0.0.1'
 PORT = 8081
+
 
 def main():
     sock = socket.socket()
@@ -33,8 +35,6 @@ def main():
     print(result)
 
     sock.close()
-
-
 
 
 if __name__ == "__main__":
