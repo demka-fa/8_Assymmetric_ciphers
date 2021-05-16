@@ -245,10 +245,9 @@ class Client:
 
 def main():
 
-    p = 54
-    g = 53
-    a = 63  # это можно хранить в txt
-
+    with open("./key.txt", "r") as file:
+        data = file.read()
+    p, g, a = map(int, data.split(" "))
     encryption = DiffieHellman(a=a, p=p, g=g)
     port_input = input("Введите номер порта сервера -> ")
     port_flag = port_validation(port_input)
@@ -265,7 +264,6 @@ def main():
         print(f"Выставили ip-адрес {ip_input} по умолчанию")
 
     client = Client(ip_input, int(port_input), encryption)
-
 
 if __name__ == "__main__":
     main()
